@@ -8,7 +8,11 @@ import streamlit as st
 from path2target.ingest import ingest_source
 from path2target.schema_infer import infer_schema
 from path2target.metadata_defs import get_metadata_definition
-from path2target.agent import generate_metadata_from_input
+try:
+    from path2target.agent import generate_metadata_from_input  # type: ignore
+    _GEN_AVAILABLE = True
+except Exception:  # pragma: no cover
+    _GEN_AVAILABLE = False
 import yaml
 import requests
 import re
@@ -207,17 +211,20 @@ if open_page and page_url:
 
 if auto_go and auto_input:
     with st.spinner("Discovering and generating definition..."):
-        out = generate_metadata_from_input(auto_input)
-        yaml_text = out.get("yaml", "")
-        refs = out.get("resources_markdown")
-        if refs:
-            st.subheader("Discovered resources")
-            st.markdown(refs)
-        if yaml_text:
-            st.subheader("Generated metadata definition")
-            st.code(yaml_text, language="yaml")
+        if _GEN_AVAILABLE:
+            out = generate_metadata_from_input(auto_input)  # type: ignore
+            yaml_text = out.get("yaml", "")
+            refs = out.get("resources_markdown")
+            if refs:
+                st.subheader("Discovered resources")
+                st.markdown(refs)
+            if yaml_text:
+                st.subheader("Generated metadata definition")
+                st.code(yaml_text, language="yaml")
+            else:
+                st.info("No definition could be generated. Try a different query or paste a specific URL.")
         else:
-            st.info("No definition could be generated. Try a different query or paste a specific URL.")
+            st.info("Generator not yet available. Please click Rerun after the cloud rebuild finishes, or paste a direct definition URL above.")
 
 # Agentic discovery
 if _AGENT_AVAILABLE and 'run_agent' in locals() and run_agent and agent_query:
