@@ -3,7 +3,7 @@ from __future__ import annotations
 import streamlit as st
 import pandas as pd
 from path2target.apis import EnsemblAPI, UniProtAPI, PDBAPI, ReactomeAPI, safe_api_call
-from path2target.resolvers import resolve_to_ensembl_gene
+from path2target.resolvers import resolve_to_ensembl_gene, map_gene_ids
 import plotly.graph_objects as go
 
 st.title("Central Dogma Navigator")
@@ -12,7 +12,25 @@ st.caption("Gene ID → Transcripts → Proteins → Pathways")
 # Input supports Ensembl ID, HGNC symbol, gene name, etc.
 user_query = st.text_input("Enter gene (HGNC symbol, gene name, Ensembl ID, etc.)", value="TP53")
 
-if st.button("Trace Gene Flow") and user_query:
+col_a, col_b = st.columns([1, 1], gap="small")
+trace = col_a.button("Trace Gene Flow")
+map_ids = col_b.button("Map Gene IDs")
+
+if map_ids and user_query:
+    with st.spinner("Resolving cross-identifiers..."):
+        rows = map_gene_ids(user_query)
+        if rows:
+            df_map = pd.DataFrame(rows)
+            df_map["Link"] = df_map["URL"]
+            st.dataframe(
+                df_map[["Type", "Identifier", "Link"]],
+                hide_index=True,
+                column_config={"Link": st.column_config.LinkColumn("Source", help="Open source record")},
+            )
+        else:
+            st.info("No cross-identifiers found.")
+
+if trace and user_query:
     with st.spinner("Fetching data from APIs..."):
         # Resolve input to Ensembl gene ID
         resolved = resolve_to_ensembl_gene(user_query)
