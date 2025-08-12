@@ -21,8 +21,7 @@ if st.button("Generate definition") and db:
     else:
         st.info("Unknown database. Try 'cBioPortal', 'GEO (Series Matrix)', or 'PandaOmics'.")
 
-# Legacy implementation commented below to prevent parse errors during reset
-"""
+# Legacy implementation removed
 
 from pathlib import Path
 
