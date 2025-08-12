@@ -8,6 +8,7 @@ import pandas as pd
 import requests
 import streamlit as st
 import yaml
+import json
 
 
 st.title("Metadata Definition Generator")
@@ -79,7 +80,7 @@ def _infer_role(col: str) -> Optional[str]:
     return None
 
 
-def _build_yaml(df: pd.DataFrame, table: str, source: str) -> str:
+def _build_json(df: pd.DataFrame, table: str, source: str) -> str:
     cols: List[Dict[str, Any]] = []
     for col in list(df.columns):
         series = df[col]
@@ -110,8 +111,9 @@ def _build_yaml(df: pd.DataFrame, table: str, source: str) -> str:
         "table_name": table,
         "columns": cols,
         "notes": "Edit roles/required/id_namespace as needed.",
+        "schema_version": "1.0",
     }
-    return yaml.safe_dump(out, sort_keys=False)
+    return json.dumps(out, indent=2, ensure_ascii=False)
 
 
 def _load_from_bytes(name: str, content: bytes) -> pd.DataFrame:
@@ -159,11 +161,11 @@ if load:
 if df is not None:
     st.subheader("Preview")
     st.dataframe(df.head(50))
-    if st.button("Generate metadata definition"):
+    if st.button("Generate metadata definition (JSON)"):
         try:
-            yml = _build_yaml(df, table_name, source_str)
-            st.subheader("Metadata definition")
-            st.code(yml, language="yaml")
+            js = _build_json(df, table_name, source_str)
+            st.subheader("Metadata definition (JSON)")
+            st.code(js, language="json")
         except Exception as e:
             st.error(f"YAML generation failed: {e}")
 
