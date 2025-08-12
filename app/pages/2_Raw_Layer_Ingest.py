@@ -7,7 +7,8 @@ import streamlit as st
 
 from path2target.ingest import ingest_source
 from path2target.schema_infer import infer_schema
-from path2target.metadata_defs import get_available_sources, get_metadata_definition
+import yaml
+import requests
 
 st.title("Raw Layer: Ingest + Schema Understanding")
 
@@ -18,9 +19,9 @@ with st.sidebar:
     use_sample = st.button("Use sample (data/raw/input.csv)")
     run = st.button("Ingest")
     st.divider()
-    st.caption("Metadata profiles")
-    meta_src = st.selectbox("Pick public source", get_available_sources())
-    show_meta = st.button("Show metadata definition")
+    st.caption("Metadata definition (YAML/JSON)")
+    meta_url = st.text_input("Definition URL")
+    load_meta_def = st.button("Load definition")
 
 df = None
 if use_sample:
@@ -50,10 +51,28 @@ if df is not None:
     summary = infer_schema(df)
     st.json(summary)
 
-# Metadata definition viewer
-if show_meta:
-    tmpl = get_metadata_definition(meta_src)
-    st.subheader(f"Metadata definition: {meta_src}")
-    st.code(tmpl, language="yaml")
+# Metadata definition via URL
+if load_meta_def and meta_url:
+    try:
+        r = requests.get(meta_url, timeout=30)
+        r.raise_for_status()
+        text = r.text
+        # Try YAML first, then JSON
+        try:
+            data = yaml.safe_load(text)
+        except Exception:
+            data = None
+        if data is None:
+            try:
+                data = r.json()
+            except Exception:
+                data = None
+        if data is None:
+            st.error("Could not parse definition as YAML or JSON.")
+        else:
+            st.subheader("Loaded metadata definition")
+            st.code(yaml.safe_dump(data, sort_keys=False), language="yaml")
+    except Exception as e:
+        st.error(f"Failed to load definition: {e}")
 
 
