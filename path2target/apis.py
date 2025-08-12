@@ -105,6 +105,17 @@ class PDBAPI:
                 results.append({"identifier": item})
         return results
 
+    @staticmethod
+    def get_entry_details(pdb_id: str) -> Dict:
+        """Get detailed metadata for a PDB entry (title, method, resolution)."""
+        try:
+            url = f"https://data.rcsb.org/rest/v1/core/entry/{pdb_id}"
+            r = requests.get(url, timeout=30)
+            r.raise_for_status()
+            return r.json()
+        except Exception:
+            return {}
+
 
 class ReactomeAPI:
     BASE_URL = "https://reactome.org/ContentService"
@@ -121,6 +132,17 @@ class ReactomeAPI:
             return r.json()
         except Exception:
             return []
+
+    @staticmethod
+    def get_pathway_details(stable_id: str) -> Dict:
+        """Fetch pathway details for a Reactome stable ID."""
+        try:
+            url = f"{ReactomeAPI.BASE_URL}/data/pathway/{stable_id}"
+            r = requests.get(url, timeout=30)
+            r.raise_for_status()
+            return r.json()
+        except Exception:
+            return {}
 
 
 def safe_api_call(func, *args, **kwargs):

@@ -92,9 +92,14 @@ if st.button("Trace Gene Flow") and user_query:
                         elif isinstance(s, str):
                             pid = s
                         if pid:
+                            det = safe_api_call(PDBAPI.get_entry_details, pid) or {}
                             all_structures.append({
                                 "PDB ID": pid,
-                                "UniProt": uniprot_id
+                                "Title": det.get("struct", {}).get("title", ""),
+                                "Method": ", ".join(det.get("exptl", [{}])[0].values()) if det.get("exptl") else "",
+                                "Resolution": (str(det.get("rcsb_entry_info", {}).get("resolution_combined", [""])[0]) if det.get("rcsb_entry_info") else ""),
+                                "URL": f"https://www.rcsb.org/structure/{pid}",
+                                "UniProt": uniprot_id,
                             })
                 
                 if all_structures:
@@ -115,13 +120,16 @@ if st.button("Trace Gene Flow") and user_query:
                         if any(row.get("UniProt ID") == uniprot_id and row.get("EC") for row in protein_data):
                             is_enzyme = True
                             relation = "catalyzes in"
+                        stid = p.get("stId")
+                        pdet = safe_api_call(ReactomeAPI.get_pathway_details, stid) if stid else {}
                         all_pathways.append({
-                            "Pathway ID": p.get("stId"),
+                            "Pathway ID": stid,
                             "Pathway Name": p.get("displayName"),
                             "Species": p.get("speciesName"),
-                            "UniProt": uniprot_id,
                             "Relation": relation,
-                            "Reactome URL": f"https://reactome.org/PathwayBrowser/#/{p.get('stId')}"
+                            "Top Level?": pdet.get("isTopLevelPathway", False) if isinstance(pdet, dict) else False,
+                            "Reactome URL": f"https://reactome.org/PathwayBrowser/#/{stid}",
+                            "UniProt": uniprot_id,
                         })
                 
                 if all_pathways:
