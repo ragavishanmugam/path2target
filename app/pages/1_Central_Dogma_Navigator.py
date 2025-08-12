@@ -3,7 +3,7 @@ from __future__ import annotations
 import streamlit as st
 import pandas as pd
 from path2target.apis import EnsemblAPI, UniProtAPI, PDBAPI, ReactomeAPI, safe_api_call
-from path2target.resolvers import resolve_to_ensembl_gene, map_gene_ids
+from path2target import resolvers as _resolvers
 import plotly.graph_objects as go
 
 st.title("Central Dogma Navigator")
@@ -18,7 +18,7 @@ map_ids = col_b.button("Map Gene IDs")
 
 if map_ids and user_query:
     with st.spinner("Resolving cross-identifiers..."):
-        rows = map_gene_ids(user_query)
+        rows = _resolvers.map_gene_ids(user_query) if hasattr(_resolvers, "map_gene_ids") else []
         if rows:
             df_map = pd.DataFrame(rows)
             df_map["Link"] = df_map["URL"]
@@ -33,7 +33,7 @@ if map_ids and user_query:
 if trace and user_query:
     with st.spinner("Fetching data from APIs..."):
         # Resolve input to Ensembl gene ID
-        resolved = resolve_to_ensembl_gene(user_query)
+        resolved = _resolvers.resolve_to_ensembl_gene(user_query) if hasattr(_resolvers, "resolve_to_ensembl_gene") else None
         if not resolved:
             st.error("Could not resolve input to an Ensembl Gene ID. Try a different identifier.")
             st.stop()
