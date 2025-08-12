@@ -24,6 +24,7 @@ load = st.button("Load")
 df: Optional[pd.DataFrame] = None
 table_name: str = "table"
 source_str = "user_upload"
+excel_state_key = "metadata_def_excel"
 
 def _simple_dtype(series: pd.Series) -> str:
     dt = str(series.dtype)
@@ -119,9 +120,15 @@ def _build_json(df: pd.DataFrame, table: str, source: str) -> str:
 def _load_from_bytes(name: str, content: bytes) -> pd.DataFrame:
     nl = name.lower()
     if nl.endswith((".xlsx", ".xls")):
+        # For Excel, we don't return a DataFrame here; we stash bytes and sheet names for multi-sheet handling
         xls = pd.ExcelFile(io.BytesIO(content))
-        sheet = xls.sheet_names[0]
-        return pd.read_excel(io.BytesIO(content), sheet_name=sheet)
+        st.session_state[excel_state_key] = {
+            "bytes": content,
+            "sheets": xls.sheet_names,
+            "filename": name,
+        }
+        # Return an empty frame as placeholder
+        return pd.DataFrame()
     if nl.endswith(".csv"):
         return pd.read_csv(io.BytesIO(content))
     if nl.endswith((".tsv", ".txt")):
@@ -158,14 +165,35 @@ if load:
     except Exception as e:
         st.error(f"Load failed: {e}")
 
-if df is not None:
-    st.subheader("Preview")
-    st.dataframe(df.head(50))
-    if st.button("Generate metadata definition (JSON)"):
+# Excel multi-sheet handling
+if excel_state_key in st.session_state:
+    ex = st.session_state[excel_state_key]
+    sheets = st.multiselect("Select sheets", ex["sheets"], default=ex["sheets"])  # default all
+    if not sheets:
+        st.info("Pick at least one sheet.")
+    for sheet in sheets:
         try:
-            js = _build_json(df, table_name, source_str)
-            st.subheader("Metadata definition (JSON)")
+            edf = pd.read_excel(io.BytesIO(ex["bytes"]), sheet_name=sheet)
+        except Exception as e:
+            st.error(f"Failed to read sheet '{sheet}': {e}")
+            continue
+        st.subheader(f"Preview — {sheet}")
+        st.dataframe(edf.head(50))
+        try:
+            js = _build_json(edf, f"{ex['filename']}:{sheet}", source_str)
+            st.subheader(f"Metadata definition (JSON) — {sheet}")
             st.json(json.loads(js))
         except Exception as e:
-            st.error(f"YAML generation failed: {e}")
+            st.error(f"Definition generation failed for '{sheet}': {e}")
+
+# Non-Excel single-table handling
+elif df is not None:
+    st.subheader("Preview")
+    st.dataframe(df.head(50))
+    try:
+        js = _build_json(df, table_name, source_str)
+        st.subheader("Metadata definition (JSON)")
+        st.json(json.loads(js))
+    except Exception as e:
+        st.error(f"Definition generation failed: {e}")
 
