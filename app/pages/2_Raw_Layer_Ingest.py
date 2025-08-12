@@ -27,25 +27,25 @@ try:
 except Exception:  # pragma: no cover
     BeautifulSoup = None  # type: ignore
 
-st.title("Raw Layer: Ingest + Schema Understanding")
-
-with st.sidebar:
-    source = st.selectbox("Source", ["primekg", "csv", "api"], index=0)
-    url = st.text_input("URL (for primekg/api)")
-    uploaded = st.file_uploader("Upload CSV/TSV")
-    use_sample = st.button("Use sample (data/raw/input.csv)")
-    run = st.button("Ingest")
-    st.divider()
-    st.caption("Metadata definition (YAML/JSON)")
-    meta_url = st.text_input("Definition URL")
-    load_meta_def = st.button("Load definition")
-    st.caption("Or browse a web page and extract candidate definition links")
-    page_url = st.text_input("Web page URL")
-    open_page = st.button("Open page below")
-    st.divider()
-    st.caption("One-shot: enter database name or URL to auto-discover and generate a metadata definition")
-    auto_input = st.text_input("Database name or URL (e.g., 'cBioPortal', 'GEO', or a docs link)")
-    auto_go = st.button("Auto-discover & generate")
+st.title("Metadata Definition Generator")
+st.caption("Input a database name; get a metadata definition template.")
+db_name = st.text_input("Database name", placeholder="e.g., cBioPortal, GEO (Series Matrix), PandaOmics")
+go = st.button("Generate definition")
+if go and db_name:
+    name_lower = db_name.strip().lower()
+    if "cbio" in name_lower:
+        tmpl = get_metadata_definition("cBioPortal")
+    elif "geo" in name_lower:
+        tmpl = get_metadata_definition("GEO (Series Matrix)")
+    elif "panda" in name_lower:
+        tmpl = get_metadata_definition("PandaOmics (stub)")
+    else:
+        tmpl = ""
+        st.info("Unknown database. Try 'cBioPortal', 'GEO (Series Matrix)', or 'PandaOmics'.")
+    if tmpl:
+        st.subheader("Metadata definition")
+        st.code(tmpl, language="yaml")
+st.stop()
     if _AGENT_AVAILABLE:
         st.caption("Or ask the agent to discover submission guidelines")
         agent_query = st.text_input("Agent query (e.g., 'PandaOmics submission guidelines')")
