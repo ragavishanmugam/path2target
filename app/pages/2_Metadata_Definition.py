@@ -117,6 +117,32 @@ def _build_json(df: pd.DataFrame, table: str, source: str) -> str:
     return json.dumps(out, indent=2, ensure_ascii=False)
 
 
+def _summarize_df(df: pd.DataFrame, file_name: str, sheet_name: Optional[str] = None) -> List[Dict[str, Any]]:
+    rows: List[Dict[str, Any]] = []
+    for col in list(df.columns):
+        s = df[col]
+        dtype = _simple_dtype(s)
+        try:
+            example = str(s.dropna().iloc[0])
+        except Exception:
+            example = None
+        nonnull_ratio = float(s.notna().mean()) if len(s) else 0.0
+        required = nonnull_ratio > 0.95
+        id_ns = _detect_id_namespace(s.dropna().astype(str).head(50).tolist())
+        role = _infer_role(col)
+        rows.append({
+            "file": file_name,
+            "sheet": sheet_name or "-",
+            "column": str(col),
+            "dtype": dtype,
+            "required": bool(required),
+            "role": role or "",
+            "id_namespace": id_ns or "",
+            "example": example or "",
+        })
+    return rows
+
+
 def _load_from_bytes(name: str, content: bytes) -> pd.DataFrame:
     nl = name.lower()
     if nl.endswith((".xlsx", ".xls")):
@@ -171,6 +197,7 @@ if excel_state_key in st.session_state:
     sheets = st.multiselect("Select sheets", ex["sheets"], default=ex["sheets"])  # default all
     if not sheets:
         st.info("Pick at least one sheet.")
+    all_rows: List[Dict[str, Any]] = []
     for sheet in sheets:
         try:
             edf = pd.read_excel(io.BytesIO(ex["bytes"]), sheet_name=sheet)
@@ -179,21 +206,24 @@ if excel_state_key in st.session_state:
             continue
         st.subheader(f"Preview — {sheet}")
         st.dataframe(edf.head(50))
-        try:
-            js = _build_json(edf, f"{ex['filename']}:{sheet}", source_str)
-            st.subheader(f"Metadata definition (JSON) — {sheet}")
-            st.json(json.loads(js))
-        except Exception as e:
-            st.error(f"Definition generation failed for '{sheet}': {e}")
+        all_rows.extend(_summarize_df(edf, ex["filename"], sheet))
+
+    if all_rows:
+        st.subheader("Consolidated metadata definition (all selected sheets)")
+        summary_df = pd.DataFrame(all_rows, columns=[
+            "file", "sheet", "column", "dtype", "required", "role", "id_namespace", "example"
+        ])
+        st.dataframe(summary_df, use_container_width=True)
 
 # Non-Excel single-table handling
 elif df is not None:
     st.subheader("Preview")
     st.dataframe(df.head(50))
-    try:
-        js = _build_json(df, table_name, source_str)
-        st.subheader("Metadata definition (JSON)")
-        st.json(json.loads(js))
-    except Exception as e:
-        st.error(f"Definition generation failed: {e}")
+    # Single-table consolidated summary
+    rows = _summarize_df(df, table_name)
+    summary_df = pd.DataFrame(rows, columns=[
+        "file", "sheet", "column", "dtype", "required", "role", "id_namespace", "example"
+    ])
+    st.subheader("Metadata definition (table)")
+    st.dataframe(summary_df, use_container_width=True)
 
