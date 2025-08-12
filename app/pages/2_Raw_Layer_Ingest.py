@@ -78,6 +78,52 @@ if load_meta_def and meta_url:
             except Exception:
                 data = None
         if data is None:
+            # Try inferring from file types (xlsx/csv/tsv)
+            url_lower = meta_url.lower()
+            if any(url_lower.endswith(ext) for ext in [".xlsx", ".xls"]):
+                import io
+                import pandas as pd
+                content = r.content
+                try:
+                    xls = pd.ExcelFile(io.BytesIO(content))
+                    sheets_summary = []
+                    for sheet in xls.sheet_names:
+                        try:
+                            df = pd.read_excel(xls, sheet_name=sheet, nrows=50)
+                            cols = []
+                            for col in df.columns.tolist():
+                                series = df[col]
+                                dtype = str(series.dtype)
+                                cols.append({"name": str(col), "dtype": dtype})
+                            sheets_summary.append({"sheet": sheet, "columns": cols})
+                        except Exception:
+                            sheets_summary.append({"sheet": sheet, "columns": []})
+                    tmpl = {
+                        "source": "Excel (inferred)",
+                        "url": meta_url,
+                        "sheets": sheets_summary,
+                    }
+                    st.subheader("Loaded metadata definition (inferred from Excel)")
+                    st.code(yaml.safe_dump(tmpl, sort_keys=False), language="yaml")
+                    return
+                except Exception as e:
+                    st.error(f"Failed to parse Excel: {e}")
+            elif any(url_lower.endswith(ext) for ext in [".csv", ".tsv", ".txt"]):
+                import io
+                import pandas as pd
+                sep = "," if url_lower.endswith(".csv") else "\t"
+                try:
+                    df = pd.read_csv(io.BytesIO(r.content), sep=sep, nrows=50)
+                    cols = []
+                    for col in df.columns.tolist():
+                        dtype = str(df[col].dtype)
+                        cols.append({"name": str(col), "dtype": dtype})
+                    tmpl = {"source": "Table (inferred)", "url": meta_url, "columns": cols}
+                    st.subheader("Loaded metadata definition (inferred from table)")
+                    st.code(yaml.safe_dump(tmpl, sort_keys=False), language="yaml")
+                    return
+                except Exception as e:
+                    st.error(f"Failed to parse table: {e}")
             # Recognize known documentation pages and synthesize definition
             if "docs.cbioportal.org/data-loading" in meta_url:
                 st.subheader("Loaded metadata definition (cBioPortal)")
