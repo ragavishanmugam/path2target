@@ -4,6 +4,7 @@ import streamlit as st
 import pandas as pd
 from path2target.apis import EnsemblAPI, UniProtAPI, PDBAPI, ReactomeAPI, safe_api_call
 from path2target.resolvers import resolve_to_ensembl_gene
+import plotly.graph_objects as go
 
 st.title("Central Dogma Navigator")
 st.caption("Gene ID → Transcripts → Proteins → Pathways")
@@ -191,40 +192,50 @@ if st.button("Trace Gene Flow") and user_query:
                 else:
                     st.info("No Reactome pathways found")
 
-                # ----- Central Dogma Visual Summary -----
+                # ----- Central Dogma Interactive (Sankey) -----
                 st.subheader("Central Dogma Overview")
-                # Prepare counts and examples for labels
                 tx_ids = [t.get("Transcript ID") for t in (pd.DataFrame(transcript_data).to_dict("records") if transcript_data else [])]
-                prot_ids = list(uniprot_ids)
-                pdb_ids = [row.get("PDB ID") for row in (all_structures or []) if row.get("PDB ID")]
+                prot_ids = list(uniprot_ids or [])
                 pw_ids = [row.get("Pathway ID") for row in (all_pathways or []) if row.get("Pathway ID")]
 
-                def label(title: str, items: list[str], max_show: int = 3) -> str:
-                    items = [i for i in (items or []) if isinstance(i, str) and i]
-                    shown = "\n".join(items[:max_show]) if items else ""
-                    more = f"\n(+{len(items)-max_show} more)" if len(items) > max_show else ""
-                    return f"{title} ({len(items)})\n{shown}{more}"
+                # Build Sankey nodes and links
+                node_labels = [
+                    f"Gene: {gene_name or gene_id}",
+                    "RNA (Transcripts)",
+                    "Proteins",
+                    "Pathways",
+                ]
+                sources = [0, 1, 2]
+                targets = [1, 2, 3]
+                values = [max(len(tx_ids), 1), max(len(prot_ids), 1), max(len(pw_ids), 1)]
+                examples = [
+                    ", ".join((tx_ids or [])[:5]),
+                    ", ".join((prot_ids or [])[:5]),
+                    ", ".join((pw_ids or [])[:5]),
+                ]
 
-                gene_label = f"Gene\n{gene_name or ''}\n{gene_id}"
-                tx_label = label("Transcripts", tx_ids)
-                prot_label = label("Proteins", prot_ids)
-                pdb_label = label("PDB", pdb_ids)
-                pw_label = label("Pathways", pw_ids)
-
-                dot = f"""
-                digraph G {{
-                  rankdir=LR;
-                  node [shape=box, style=rounded, fontsize=12];
-                  gene   [label="{gene_label}", shape=oval, style=filled, fillcolor="#eef7ff"];
-                  rna    [label="{tx_label}", style=filled, fillcolor="#eef7ff"];
-                  prot   [label="{prot_label}", style=filled, fillcolor="#eef7ff"];
-                  pw     [label="{pw_label}", style=filled, fillcolor="#eef7ff"];
-                  pdb    [label="{pdb_label}", style=filled, fillcolor="#f7f7ff"];
-                  gene -> rna -> prot -> pw;
-                  prot -> pdb [style=dashed, color="#888888"];
-                }}
-                """
-                st.graphviz_chart(dot)
+                link_custom = [f"Examples: {ex}" if ex else "Examples: None" for ex in examples]
+                fig = go.Figure(
+                    data=[
+                        go.Sankey(
+                            node=dict(
+                                pad=18,
+                                thickness=18,
+                                line=dict(color="#888", width=0.5),
+                                label=node_labels,
+                            ),
+                            link=dict(
+                                source=sources,
+                                target=targets,
+                                value=values,
+                                customdata=link_custom,
+                                hovertemplate="%{customdata}<extra></extra>",
+                            ),
+                        )
+                    ]
+                )
+                fig.update_layout(height=340, margin=dict(l=10, r=10, t=10, b=10))
+                st.plotly_chart(fig, use_container_width=True, theme="streamlit")
             else:
                 st.warning("No proteins found for this gene")
         else:
