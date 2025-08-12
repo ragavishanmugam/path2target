@@ -3,16 +3,24 @@ from __future__ import annotations
 import streamlit as st
 import pandas as pd
 from path2target.apis import EnsemblAPI, UniProtAPI, PDBAPI, ReactomeAPI, safe_api_call
+from path2target.resolvers import resolve_to_ensembl_gene
 
 st.title("Central Dogma Navigator")
 st.caption("Gene ID → Transcripts → Proteins → Pathways")
 
-# Input
-gene_id = st.text_input("Enter Gene ID (e.g., ENSG00000141510 for TP53)", value="ENSG00000141510")
+# Input supports Ensembl ID, HGNC symbol, gene name, etc.
+user_query = st.text_input("Enter gene (HGNC symbol, gene name, Ensembl ID, etc.)", value="TP53")
 
-if st.button("Trace Gene Flow") and gene_id:
+if st.button("Trace Gene Flow") and user_query:
     with st.spinner("Fetching data from APIs..."):
-        
+        # Resolve input to Ensembl gene ID
+        resolved = resolve_to_ensembl_gene(user_query)
+        if not resolved:
+            st.error("Could not resolve input to an Ensembl Gene ID. Try a different identifier.")
+            st.stop()
+        gene_id = resolved["ensembl_gene_id"]
+        gene_name = resolved.get("symbol", "")
+
         # 1. Gene Info
         st.subheader("🧬 Gene")
         gene_info = safe_api_call(EnsemblAPI.get_gene_info, gene_id)
@@ -24,7 +32,7 @@ if st.button("Trace Gene Flow") and gene_id:
                 "Biotype": gene_info.get("biotype"),
                 "Location": f"{gene_info.get('seq_region_name')}:{gene_info.get('start')}-{gene_info.get('end')}"
             })
-            gene_name = gene_info.get("display_name", "")
+            gene_name = gene_name or gene_info.get("display_name", "")
         else:
             st.error("Gene not found")
             st.stop()
