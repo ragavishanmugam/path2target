@@ -18,11 +18,11 @@ map_ids = col_b.button("Map Gene IDs")
 
 if map_ids and user_query:
     with st.spinner("Resolving cross-identifiers..."):
-rows = (
-    _resolvers.map_gene_ids(user_query)
-    if hasattr(_resolvers, "map_gene_ids")
-    else (_resolvers.map_gene_id(user_query) if hasattr(_resolvers, "map_gene_id") else [])
-)
+        rows = (
+            _resolvers.map_gene_ids(user_query)
+            if hasattr(_resolvers, "map_gene_ids")
+            else (_resolvers.map_gene_id(user_query) if hasattr(_resolvers, "map_gene_id") else [])
+        )
         if rows:
             df_map = pd.DataFrame(rows)
             df_map["Link"] = df_map["URL"]
