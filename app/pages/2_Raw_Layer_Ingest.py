@@ -8,6 +8,7 @@ import streamlit as st
 from path2target.ingest import ingest_source
 from path2target.schema_infer import infer_schema
 from path2target.metadata_defs import get_metadata_definition
+from path2target.agent import generate_metadata_from_input
 import yaml
 import requests
 import re
@@ -37,6 +38,10 @@ with st.sidebar:
     st.caption("Or browse a web page and extract candidate definition links")
     page_url = st.text_input("Web page URL")
     open_page = st.button("Open page below")
+    st.divider()
+    st.caption("One-shot: enter database name or URL to auto-discover and generate a metadata definition")
+    auto_input = st.text_input("Database name or URL (e.g., 'cBioPortal', 'GEO', or a docs link)")
+    auto_go = st.button("Auto-discover & generate")
     if _AGENT_AVAILABLE:
         st.caption("Or ask the agent to discover submission guidelines")
         agent_query = st.text_input("Agent query (e.g., 'PandaOmics submission guidelines')")
@@ -199,6 +204,20 @@ if open_page and page_url:
                     st.code(tmpl, language="yaml")
     except Exception as e:
         st.error(f"Failed to fetch page: {e}")
+
+if auto_go and auto_input:
+    with st.spinner("Discovering and generating definition..."):
+        out = generate_metadata_from_input(auto_input)
+        yaml_text = out.get("yaml", "")
+        refs = out.get("resources_markdown")
+        if refs:
+            st.subheader("Discovered resources")
+            st.markdown(refs)
+        if yaml_text:
+            st.subheader("Generated metadata definition")
+            st.code(yaml_text, language="yaml")
+        else:
+            st.info("No definition could be generated. Try a different query or paste a specific URL.")
 
 # Agentic discovery
 if _AGENT_AVAILABLE and 'run_agent' in locals() and run_agent and agent_query:

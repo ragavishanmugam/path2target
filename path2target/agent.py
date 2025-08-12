@@ -185,3 +185,146 @@ def synthesize_metadata_definition(db_name: str, resources: List[DiscoveredResou
     return yaml.safe_dump(tmpl, sort_keys=False)
 
 
+# ---------------- High-level generator ----------------
+def _is_url(text: str) -> bool:
+    return text.lower().startswith(("http://", "https://"))
+
+
+def _yaml_from_yaml_json(text: str) -> str | None:
+    try:
+        data = yaml.safe_load(text)
+        if data is not None:
+            return yaml.safe_dump(data, sort_keys=False)
+    except Exception:
+        pass
+    return None
+
+
+def _infer_from_excel(content: bytes, url: str) -> str:
+    import io
+    import pandas as pd
+    xls = pd.ExcelFile(io.BytesIO(content))
+    sheets_summary = []
+    for sheet in xls.sheet_names:
+        try:
+            df = pd.read_excel(xls, sheet_name=sheet, nrows=50)
+            cols = [{"name": str(c), "dtype": str(df[c].dtype)} for c in df.columns]
+        except Exception:
+            cols = []
+        sheets_summary.append({"sheet": sheet, "columns": cols})
+    tmpl = {"source": "Excel (inferred)", "url": url, "sheets": sheets_summary}
+    return yaml.safe_dump(tmpl, sort_keys=False)
+
+
+def _infer_from_table(content: bytes, url: str, sep: str) -> str:
+    import io
+    import pandas as pd
+    df = pd.read_csv(io.BytesIO(content), sep=sep, nrows=50)
+    cols = [{"name": str(c), "dtype": str(df[c].dtype)} for c in df.columns]
+    tmpl = {"source": "Table (inferred)", "url": url, "columns": cols}
+    return yaml.safe_dump(tmpl, sort_keys=False)
+
+
+def generate_metadata_from_input(input_text: str) -> Dict[str, str]:
+    """Given a DB name or URL, try to produce a metadata YAML and list resources.
+
+    Returns dict with keys: 'yaml' and optional 'resources_markdown'.
+    """
+    q = (input_text or "").strip()
+    if not q:
+        return {"yaml": ""}
+
+    resources = web_search_resources(q, max_results=8) if not _is_url(q) else []
+
+    # If URL: fetch and classify
+    if _is_url(q):
+        try:
+            resp = requests.get(q, timeout=30)
+            resp.raise_for_status()
+            url_lower = q.lower()
+            # Direct YAML/JSON text
+            y = _yaml_from_yaml_json(resp.text)
+            if y:
+                return {"yaml": y}
+            # Excel
+            if url_lower.endswith((".xlsx", ".xls")):
+                return {"yaml": _infer_from_excel(resp.content, q)}
+            # CSV/TSV/TXT
+            if url_lower.endswith(".csv"):
+                return {"yaml": _infer_from_table(resp.content, q, sep=",")}
+            if url_lower.endswith((".tsv", ".txt")):
+                return {"yaml": _infer_from_table(resp.content, q, sep="\t")}
+            # HTML: extract candidate links
+            html = resp.text
+            links: List[str] = []
+            if BeautifulSoup is not None:
+                soup = BeautifulSoup(html, "html.parser")
+                for a in soup.find_all("a", href=True):
+                    links.append(a.get("href"))
+            # Normalize absolute
+            from urllib.parse import urljoin
+            cand = [urljoin(q, h) for h in links if isinstance(h, str)]
+            # Prefer yaml/json then excel/csv
+            order = [
+                [".yaml", ".yml", ".json"],
+                [".xlsx", ".xls"],
+                [".csv"],
+                [".tsv", ".txt"],
+            ]
+            for exts in order:
+                for u in cand:
+                    if any(u.lower().endswith(ext) for ext in exts):
+                        try:
+                            r2 = requests.get(u, timeout=20)
+                            r2.raise_for_status()
+                            if any(u.lower().endswith(ext) for ext in [".yaml", ".yml", ".json"]):
+                                y2 = _yaml_from_yaml_json(r2.text)
+                                if y2:
+                                    return {"yaml": y2}
+                            if any(u.lower().endswith(ext) for ext in [".xlsx", ".xls"]):
+                                return {"yaml": _infer_from_excel(r2.content, u)}
+                            if u.lower().endswith(".csv"):
+                                return {"yaml": _infer_from_table(r2.content, u, sep=",")}
+                            if any(u.lower().endswith(ext) for ext in [".tsv", ".txt"]):
+                                return {"yaml": _infer_from_table(r2.content, u, sep="\t")}
+                        except Exception:
+                            continue
+            # Fallback skeleton
+            y = synthesize_metadata_definition(q, [])
+            return {"yaml": y}
+        except Exception:
+            pass
+
+    # Name-based flow: use resources and try above for each link
+    tried: List[str] = []
+    for res in resources:
+        u = res.url
+        if not _is_url(u) or u in tried:
+            continue
+        tried.append(u)
+        try:
+            r = requests.get(u, timeout=20)
+            r.raise_for_status()
+            y = _yaml_from_yaml_json(r.text)
+            if y:
+                md = "\n".join([f"- [{h.title}]({h.url}) — {h.snippet}" for h in resources])
+                return {"yaml": y, "resources_markdown": md}
+            url_lower = u.lower()
+            if url_lower.endswith((".xlsx", ".xls")):
+                md = "\n".join([f"- [{h.title}]({h.url}) — {h.snippet}" for h in resources])
+                return {"yaml": _infer_from_excel(r.content, u), "resources_markdown": md}
+            if url_lower.endswith(".csv"):
+                md = "\n".join([f"- [{h.title}]({h.url}) — {h.snippet}" for h in resources])
+                return {"yaml": _infer_from_table(r.content, u, sep=",") , "resources_markdown": md}
+            if url_lower.endswith((".tsv", ".txt")):
+                md = "\n".join([f"- [{h.title}]({h.url}) — {h.snippet}" for h in resources])
+                return {"yaml": _infer_from_table(r.content, u, sep="\t"), "resources_markdown": md}
+        except Exception:
+            continue
+
+    # Final fallback: synthesized + resources list
+    y = synthesize_metadata_definition(q, resources)
+    md = "\n".join([f"- [{h.title}]({h.url}) — {h.snippet}" for h in resources])
+    return {"yaml": y, "resources_markdown": md}
+
+
