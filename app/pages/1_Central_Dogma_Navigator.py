@@ -67,12 +67,18 @@ if st.button("Trace Gene Flow") and gene_id:
                 st.subheader("🏗️ PDB Structures")
                 all_structures = []
                 for uniprot_id in uniprot_ids[:3]:  # Check first 3 proteins
-                    structures = safe_api_call(PDBAPI.get_structures_by_uniprot, uniprot_id)
+                    structures = safe_api_call(PDBAPI.get_structures_by_uniprot, uniprot_id) or []
                     for s in structures[:5]:  # Limit to 5 per protein
-                        all_structures.append({
-                            "PDB ID": s.get("identifier"),
-                            "UniProt": uniprot_id
-                        })
+                        pid = None
+                        if isinstance(s, dict):
+                            pid = s.get("identifier") or s.get("entry_id") or s.get("entryId")
+                        elif isinstance(s, str):
+                            pid = s
+                        if pid:
+                            all_structures.append({
+                                "PDB ID": pid,
+                                "UniProt": uniprot_id
+                            })
                 
                 if all_structures:
                     st.dataframe(pd.DataFrame(all_structures))

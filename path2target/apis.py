@@ -55,7 +55,10 @@ class PDBAPI:
     
     @staticmethod
     def get_structures_by_uniprot(uniprot_id: str) -> List[Dict]:
-        """Get PDB structures for a UniProt ID."""
+        """Get PDB structures for a UniProt ID.
+
+        Returns a list of dicts with at least a 'identifier' key when available.
+        """
         query = {
             "query": {
                 "type": "terminal",
@@ -73,9 +76,23 @@ class PDBAPI:
             }
         }
         
-        r = requests.post(PDBAPI.BASE_URL, json=query, timeout=30)
-        r.raise_for_status()
-        return r.json().get("result_set", [])
+        try:
+            r = requests.post(PDBAPI.BASE_URL, json=query, timeout=30)
+            r.raise_for_status()
+            data = r.json()
+        except Exception:
+            return []
+
+        items = data.get("result_set") or data.get("resultSet") or []
+        results: List[Dict] = []
+        for item in items:
+            if isinstance(item, dict):
+                pid = item.get("identifier") or item.get("entry_id") or item.get("entryId")
+                if isinstance(pid, str) and pid:
+                    results.append({"identifier": pid})
+            elif isinstance(item, str):
+                results.append({"identifier": item})
+        return results
 
 
 class ReactomeAPI:
