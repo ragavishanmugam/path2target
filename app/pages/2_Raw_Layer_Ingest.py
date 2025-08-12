@@ -12,7 +12,11 @@ import yaml
 import requests
 import re
 import streamlit.components.v1 as components
-from path2target.agent import web_search_resources, synthesize_metadata_definition
+try:
+    from path2target.agent import web_search_resources, synthesize_metadata_definition  # type: ignore
+    _AGENT_AVAILABLE = True
+except Exception:
+    _AGENT_AVAILABLE = False
 try:
     from bs4 import BeautifulSoup  # type: ignore
 except Exception:  # pragma: no cover
@@ -33,9 +37,12 @@ with st.sidebar:
     st.caption("Or browse a web page and extract candidate definition links")
     page_url = st.text_input("Web page URL")
     open_page = st.button("Open page below")
-    st.caption("Or ask the agent to discover submission guidelines")
-    agent_query = st.text_input("Agent query (e.g., 'PandaOmics submission guidelines')")
-    run_agent = st.button("Search & synthesize")
+    if _AGENT_AVAILABLE:
+        st.caption("Or ask the agent to discover submission guidelines")
+        agent_query = st.text_input("Agent query (e.g., 'PandaOmics submission guidelines')")
+        run_agent = st.button("Search & synthesize")
+    else:
+        st.caption("Agent search (DuckDuckGo + readability) will appear after the cloud rebuild picks up requirements.")
 
 df = None
 if use_sample:
@@ -194,7 +201,7 @@ if open_page and page_url:
         st.error(f"Failed to fetch page: {e}")
 
 # Agentic discovery
-if 'run_agent' in locals() and run_agent and agent_query:
+if _AGENT_AVAILABLE and 'run_agent' in locals() and run_agent and agent_query:
     st.subheader("Agent: discovered resources")
     hits = web_search_resources(agent_query, max_results=8)
     if hits:
