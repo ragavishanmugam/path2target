@@ -63,11 +63,20 @@ if st.button("Trace Gene Flow") and user_query:
                 for p in proteins[:10]:  # Limit to 10
                     uniprot_id = p.get("primaryAccession")
                     uniprot_ids.append(uniprot_id)
+                    # Fetch extra details (EC numbers, recommended/short names)
+                    details = safe_api_call(UniProtAPI.get_protein_details, uniprot_id) or {}
+                    ec_numbers = []
+                    for ann in details.get("proteinDescription", {}).get("recommendedName", {}).get("ecNumbers", []) or []:
+                        val = ann.get("value")
+                        if val:
+                            ec_numbers.append(val)
                     protein_data.append({
                         "UniProt ID": uniprot_id,
                         "Protein Name": p.get("proteinDescription", {}).get("recommendedName", {}).get("fullName", {}).get("value", ""),
                         "Length": p.get("sequence", {}).get("length"),
-                        "Gene Names": ", ".join([g.get("geneName", {}).get("value", "") for g in p.get("genes", [])])
+                        "Gene Names": ", ".join([g.get("geneName", {}).get("value", "") for g in p.get("genes", [])]),
+                        "EC": ", ".join(ec_numbers),
+                        "UniProt URL": f"https://www.uniprot.org/uniprotkb/{uniprot_id}"
                     })
                 st.dataframe(pd.DataFrame(protein_data))
                 
@@ -99,11 +108,20 @@ if st.button("Trace Gene Flow") and user_query:
                 for uniprot_id in uniprot_ids[:3]:  # Check first 3 proteins
                     pathways = safe_api_call(ReactomeAPI.get_pathways_by_protein, uniprot_id)
                     for p in pathways[:10]:  # Limit to 10 per protein
+                        is_enzyme = False
+                        relation = "participates in"
+                        # If UniProt record has EC numbers, treat as enzyme (catalyzes)
+                        # We already looked up details earlier; this is a heuristic
+                        if any(row.get("UniProt ID") == uniprot_id and row.get("EC") for row in protein_data):
+                            is_enzyme = True
+                            relation = "catalyzes in"
                         all_pathways.append({
                             "Pathway ID": p.get("stId"),
                             "Pathway Name": p.get("displayName"),
                             "Species": p.get("speciesName"),
-                            "UniProt": uniprot_id
+                            "UniProt": uniprot_id,
+                            "Relation": relation,
+                            "Reactome URL": f"https://reactome.org/PathwayBrowser/#/{p.get('stId')}"
                         })
                 
                 if all_pathways:

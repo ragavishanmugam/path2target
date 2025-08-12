@@ -49,6 +49,17 @@ class UniProtAPI:
         r.raise_for_status()
         return r.json().get("results", [])
 
+    @staticmethod
+    def get_protein_details(accession: str) -> Dict:
+        """Fetch rich UniProt record for an accession (for EC numbers, names, etc.)."""
+        try:
+            url = f"{UniProtAPI.BASE_URL}/uniprotkb/{accession}.json"
+            r = requests.get(url, timeout=30)
+            r.raise_for_status()
+            return r.json()
+        except Exception:
+            return {}
+
 
 class PDBAPI:
     BASE_URL = "https://search.rcsb.org/rcsbsearch/v2/query"
