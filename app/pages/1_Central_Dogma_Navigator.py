@@ -190,6 +190,41 @@ if st.button("Trace Gene Flow") and user_query:
                     )
                 else:
                     st.info("No Reactome pathways found")
+
+                # ----- Central Dogma Visual Summary -----
+                st.subheader("Central Dogma Overview")
+                # Prepare counts and examples for labels
+                tx_ids = [t.get("Transcript ID") for t in (pd.DataFrame(transcript_data).to_dict("records") if transcript_data else [])]
+                prot_ids = list(uniprot_ids)
+                pdb_ids = [row.get("PDB ID") for row in (all_structures or []) if row.get("PDB ID")]
+                pw_ids = [row.get("Pathway ID") for row in (all_pathways or []) if row.get("Pathway ID")]
+
+                def label(title: str, items: list[str], max_show: int = 3) -> str:
+                    items = [i for i in (items or []) if isinstance(i, str) and i]
+                    shown = "\n".join(items[:max_show]) if items else ""
+                    more = f"\n(+{len(items)-max_show} more)" if len(items) > max_show else ""
+                    return f"{title} ({len(items)})\n{shown}{more}"
+
+                gene_label = f"Gene\n{gene_name or ''}\n{gene_id}"
+                tx_label = label("Transcripts", tx_ids)
+                prot_label = label("Proteins", prot_ids)
+                pdb_label = label("PDB", pdb_ids)
+                pw_label = label("Pathways", pw_ids)
+
+                dot = f"""
+                digraph G {{
+                  rankdir=LR;
+                  node [shape=box, style=rounded, fontsize=12];
+                  gene   [label="{gene_label}", shape=oval, style=filled, fillcolor="#eef7ff"];
+                  rna    [label="{tx_label}", style=filled, fillcolor="#eef7ff"];
+                  prot   [label="{prot_label}", style=filled, fillcolor="#eef7ff"];
+                  pw     [label="{pw_label}", style=filled, fillcolor="#eef7ff"];
+                  pdb    [label="{pdb_label}", style=filled, fillcolor="#f7f7ff"];
+                  gene -> rna -> prot -> pw;
+                  prot -> pdb [style=dashed, color="#888888"];
+                }}
+                """
+                st.graphviz_chart(dot)
             else:
                 st.warning("No proteins found for this gene")
         else:
