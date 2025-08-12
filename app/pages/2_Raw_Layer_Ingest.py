@@ -7,6 +7,7 @@ import streamlit as st
 
 from path2target.ingest import ingest_source
 from path2target.schema_infer import infer_schema
+from path2target.metadata_defs import get_available_sources, get_metadata_definition
 
 st.title("Raw Layer: Ingest + Schema Understanding")
 
@@ -16,6 +17,10 @@ with st.sidebar:
     uploaded = st.file_uploader("Upload CSV/TSV")
     use_sample = st.button("Use sample (data/raw/input.csv)")
     run = st.button("Ingest")
+    st.divider()
+    st.caption("Metadata profiles")
+    meta_src = st.selectbox("Pick public source", get_available_sources())
+    show_meta = st.button("Show metadata definition")
 
 df = None
 if use_sample:
@@ -44,5 +49,11 @@ if df is not None:
     st.subheader("Inferred Schema")
     summary = infer_schema(df)
     st.json(summary)
+
+# Metadata definition viewer
+if show_meta:
+    tmpl = get_metadata_definition(meta_src)
+    st.subheader(f"Metadata definition: {meta_src}")
+    st.code(tmpl, language="yaml")
 
 
