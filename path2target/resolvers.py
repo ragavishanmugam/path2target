@@ -127,7 +127,7 @@ def map_gene_ids(query: str) -> list[dict[str, str]]:
         params={
             "q": q,
             "species": "human",
-            "fields": "symbol,name,hgnc,entrezgene,ensembl.gene,uniprot.Swiss-Prot,refseq.rna,refseq.protein",
+            "fields": "symbol,name,hgnc,entrezgene,ensembl.gene,uniprot.Swiss-Prot,refseq.rna,refseq.protein,go.BP,go.MF,go.CC",
             "size": 1,
         },
     )
@@ -190,6 +190,26 @@ def map_gene_ids(query: str) -> list[dict[str, str]]:
                             "Identifier": vals,
                             "URL": f"https://www.ncbi.nlm.nih.gov/nuccore/{vals}" if kind == "RefSeq RNA" else f"https://www.ncbi.nlm.nih.gov/protein/{vals}",
                         })
+
+            # Gene Ontology terms (BP/MF/CC)
+            go_map = hit.get("go") or {}
+            for aspect_key, label in (("BP", "GO Biological Process"), ("MF", "GO Molecular Function"), ("CC", "GO Cellular Component")):
+                terms = go_map.get(aspect_key)
+                if not terms:
+                    continue
+                # terms can be list[dict] or dict
+                if isinstance(terms, dict):
+                    terms = [terms]
+                if isinstance(terms, list):
+                    for t in terms[:50]:
+                        go_id = t.get("id")
+                        go_name = t.get("term") or t.get("name")
+                        if go_id:
+                            rows.append({
+                                "Type": label,
+                                "Identifier": f"{go_id}{(' - ' + go_name) if go_name else ''}",
+                                "URL": f"http://amigo.geneontology.org/amigo/term/{go_id}",
+                            })
 
     # 2) If no Ensembl gene yet, try Ensembl symbol lookup
     if not ensgs and symbol:
