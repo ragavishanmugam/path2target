@@ -25,13 +25,12 @@ if st.button("Trace Gene Flow") and user_query:
         st.subheader("🧬 Gene")
         gene_info = safe_api_call(EnsemblAPI.get_gene_info, gene_id)
         if gene_info:
-            st.json({
-                "ID": gene_info.get("id"),
-                "Name": gene_info.get("display_name"),
-                "Description": gene_info.get("description", ""),
-                "Biotype": gene_info.get("biotype"),
-                "Location": f"{gene_info.get('seq_region_name')}:{gene_info.get('start')}-{gene_info.get('end')}"
-            })
+            ens_gene_url = f"https://www.ensembl.org/Homo_sapiens/Gene/Summary?g={gene_info.get('id')}"
+            st.markdown(
+                f"**ID**: [{gene_info.get('id')}]({ens_gene_url})  |  **Name**: {gene_info.get('display_name')}  |  **Biotype**: {gene_info.get('biotype')}\n\n"
+                f"**Location**: {gene_info.get('seq_region_name')}:{gene_info.get('start')}-{gene_info.get('end')}\n\n"
+                f"**Description**: {gene_info.get('description', '')}"
+            )
             gene_name = gene_name or gene_info.get("display_name", "")
         else:
             st.error("Gene not found")
@@ -49,7 +48,18 @@ if st.button("Trace Gene Flow") and user_query:
                     "Length": t.get("length"),
                     "Is Canonical": t.get("is_canonical", False)
                 })
-            st.dataframe(pd.DataFrame(transcript_data))
+            # Add Ensembl transcript links
+            df_t = pd.DataFrame(transcript_data)
+            df_t["Link"] = df_t["Transcript ID"].apply(
+                lambda tid: f"https://www.ensembl.org/Homo_sapiens/Transcript/Summary?t={tid}"
+            )
+            st.dataframe(
+                df_t,
+                hide_index=True,
+                column_config={
+                    "Link": st.column_config.LinkColumn("Ensembl", help="Open transcript in Ensembl"),
+                },
+            )
         else:
             st.warning("No transcripts found")
         
@@ -85,7 +95,16 @@ if st.button("Trace Gene Flow") and user_query:
                         "EC": ", ".join(ec_numbers),
                         "UniProt URL": f"https://www.uniprot.org/uniprotkb/{uniprot_id}"
                     })
-                st.dataframe(pd.DataFrame(protein_data))
+                df_p = pd.DataFrame(protein_data)
+                # Create clickable link column (keep ID column too)
+                df_p["Link"] = df_p["UniProt URL"]
+                st.dataframe(
+                    df_p,
+                    hide_index=True,
+                    column_config={
+                        "Link": st.column_config.LinkColumn("UniProt", help="Open UniProt record"),
+                    },
+                )
                 
                 # 4. PDB Structures
                 st.subheader("🏗️ PDB Structures")
@@ -119,7 +138,17 @@ if st.button("Trace Gene Flow") and user_query:
                             })
                 
                 if all_structures:
-                    st.dataframe(pd.DataFrame(all_structures))
+                    df_s = pd.DataFrame(all_structures)
+                    # Ensure there is a generic Link column
+                    if "URL" in df_s.columns:
+                        df_s["Link"] = df_s["URL"]
+                    st.dataframe(
+                        df_s,
+                        hide_index=True,
+                        column_config={
+                            "Link": st.column_config.LinkColumn("PDB", help="Open PDB entry"),
+                        },
+                    )
                 else:
                     st.info("No PDB structures found")
                 
@@ -150,7 +179,15 @@ if st.button("Trace Gene Flow") and user_query:
                         })
                 
                 if all_pathways:
-                    st.dataframe(pd.DataFrame(all_pathways))
+                    df_pw = pd.DataFrame(all_pathways)
+                    df_pw["Link"] = df_pw["Reactome URL"]
+                    st.dataframe(
+                        df_pw,
+                        hide_index=True,
+                        column_config={
+                            "Link": st.column_config.LinkColumn("Reactome", help="Open pathway in Reactome"),
+                        },
+                    )
                 else:
                     st.info("No Reactome pathways found")
             else:
