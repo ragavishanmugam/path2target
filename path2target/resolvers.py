@@ -296,4 +296,8 @@ def map_gene_ids(query: str) -> list[dict[str, str]]:
 
     return _dedup_rows(rows)
 
+# Backwards-compat alias (some deployments may import singular name)
+def map_gene_id(query: str) -> list[dict[str, str]]:  # pragma: no cover
+    return map_gene_ids(query)
+
 
