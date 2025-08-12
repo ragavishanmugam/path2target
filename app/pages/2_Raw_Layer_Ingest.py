@@ -14,10 +14,17 @@ with st.sidebar:
     source = st.selectbox("Source", ["primekg", "csv", "api"], index=0)
     url = st.text_input("URL (for primekg/api)")
     uploaded = st.file_uploader("Upload CSV/TSV")
+    use_sample = st.button("Use sample (data/raw/input.csv)")
     run = st.button("Ingest")
 
 df = None
-if run:
+if use_sample:
+    try:
+        df = ingest_source("csv", path=Path("data/raw/input.csv"))
+        st.success(f"Loaded sample rows: {len(df)}")
+    except Exception as e:
+        st.error(f"Sample load failed: {e}")
+elif run:
     try:
         if uploaded is not None:
             tmp_path = Path("data/_upload.csv")

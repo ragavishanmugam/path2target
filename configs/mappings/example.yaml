@@ -1,0 +1,9 @@
+dataset:
+  path: data/raw/input.csv
+mapping:
+  entity: Gene
+  id: id
+  label: name
+  base_iri: http://example.org/gene/
+  type_iri: https://w3id.org/biolink/vocab/Gene
+
