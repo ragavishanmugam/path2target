@@ -1,4 +1,28 @@
 from __future__ import annotations
+import streamlit as st
+from path2target.metadata_defs import get_metadata_definition
+
+st.title("Metadata Definition Generator")
+st.caption("Input a database name and get a metadata definition template.")
+
+db = st.text_input("Database name", placeholder="e.g., cBioPortal, GEO (Series Matrix), PandaOmics")
+if st.button("Generate definition") and db:
+    key = db.strip().lower()
+    tmpl = ""
+    if "cbio" in key:
+        tmpl = get_metadata_definition("cBioPortal")
+    elif "geo" in key:
+        tmpl = get_metadata_definition("GEO (Series Matrix)")
+    elif "panda" in key:
+        tmpl = get_metadata_definition("PandaOmics (stub)")
+    if tmpl:
+        st.subheader("Metadata definition")
+        st.code(tmpl, language="yaml")
+    else:
+        st.info("Unknown database. Try 'cBioPortal', 'GEO (Series Matrix)', or 'PandaOmics'.")
+
+# Legacy implementation commented below to prevent parse errors during reset
+"""
 
 from pathlib import Path
 
