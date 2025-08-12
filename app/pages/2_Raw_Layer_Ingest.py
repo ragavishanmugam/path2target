@@ -105,7 +105,7 @@ if load_meta_def and meta_url:
                     }
                     st.subheader("Loaded metadata definition (inferred from Excel)")
                     st.code(yaml.safe_dump(tmpl, sort_keys=False), language="yaml")
-                    return
+                    st.stop()
                 except Exception as e:
                     st.error(f"Failed to parse Excel: {e}")
             elif any(url_lower.endswith(ext) for ext in [".csv", ".tsv", ".txt"]):
@@ -121,7 +121,7 @@ if load_meta_def and meta_url:
                     tmpl = {"source": "Table (inferred)", "url": meta_url, "columns": cols}
                     st.subheader("Loaded metadata definition (inferred from table)")
                     st.code(yaml.safe_dump(tmpl, sort_keys=False), language="yaml")
-                    return
+                    st.stop()
                 except Exception as e:
                     st.error(f"Failed to parse table: {e}")
             # Recognize known documentation pages and synthesize definition
