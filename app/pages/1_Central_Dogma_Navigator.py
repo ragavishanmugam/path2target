@@ -99,12 +99,21 @@ if st.button("Trace Gene Flow") and user_query:
                         elif isinstance(s, str):
                             pid = s
                         if pid:
-                            det = safe_api_call(PDBAPI.get_entry_details, pid) or {}
+                            get_entry_details = getattr(PDBAPI, "get_entry_details", None)
+                            det = safe_api_call(get_entry_details, pid) if callable(get_entry_details) else {}
+                            # Parse method and resolution defensively
+                            methods = []
+                            for d in (det.get("exptl") or []):
+                                if isinstance(d, dict) and d.get("method"):
+                                    methods.append(d.get("method"))
+                            method_str = ", ".join(methods)
+                            res_list = det.get("rcsb_entry_info", {}).get("resolution_combined") or []
+                            resolution = str(res_list[0]) if res_list else ""
                             all_structures.append({
                                 "PDB ID": pid,
                                 "Title": det.get("struct", {}).get("title", ""),
-                                "Method": ", ".join(det.get("exptl", [{}])[0].values()) if det.get("exptl") else "",
-                                "Resolution": (str(det.get("rcsb_entry_info", {}).get("resolution_combined", [""])[0]) if det.get("rcsb_entry_info") else ""),
+                                "Method": method_str,
+                                "Resolution": resolution,
                                 "URL": f"https://www.rcsb.org/structure/{pid}",
                                 "UniProt": uniprot_id,
                             })
@@ -128,7 +137,8 @@ if st.button("Trace Gene Flow") and user_query:
                             is_enzyme = True
                             relation = "catalyzes in"
                         stid = p.get("stId")
-                        pdet = safe_api_call(ReactomeAPI.get_pathway_details, stid) if stid else {}
+                        get_pathway_details = getattr(ReactomeAPI, "get_pathway_details", None)
+                        pdet = safe_api_call(get_pathway_details, stid) if (callable(get_pathway_details) and stid) else {}
                         all_pathways.append({
                             "Pathway ID": stid,
                             "Pathway Name": p.get("displayName"),
