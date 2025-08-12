@@ -63,13 +63,20 @@ if st.button("Trace Gene Flow") and user_query:
                 for p in proteins[:10]:  # Limit to 10
                     uniprot_id = p.get("primaryAccession")
                     uniprot_ids.append(uniprot_id)
-                    # Fetch extra details (EC numbers, recommended/short names)
-                    details = safe_api_call(UniProtAPI.get_protein_details, uniprot_id) or {}
+                    # Fetch extra details (EC numbers) defensively (Cloud may use cached module)
+                    details_func = getattr(UniProtAPI, "get_protein_details", None)
+                    details = safe_api_call(details_func, uniprot_id) if callable(details_func) else {}
+                    # EC from details or from search result fallback
                     ec_numbers = []
-                    for ann in details.get("proteinDescription", {}).get("recommendedName", {}).get("ecNumbers", []) or []:
+                    for ann in (details.get("proteinDescription", {}).get("recommendedName", {}).get("ecNumbers", []) or []):
                         val = ann.get("value")
                         if val:
                             ec_numbers.append(val)
+                    if not ec_numbers:
+                        for ann in (p.get("proteinDescription", {}).get("recommendedName", {}).get("ecNumbers", []) or []):
+                            val = ann.get("value")
+                            if val:
+                                ec_numbers.append(val)
                     protein_data.append({
                         "UniProt ID": uniprot_id,
                         "Protein Name": p.get("proteinDescription", {}).get("recommendedName", {}).get("fullName", {}).get("value", ""),
