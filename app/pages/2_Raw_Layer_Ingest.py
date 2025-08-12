@@ -7,6 +7,7 @@ import streamlit as st
 
 from path2target.ingest import ingest_source
 from path2target.schema_infer import infer_schema
+from path2target.metadata_defs import get_metadata_definition
 import yaml
 import requests
 import re
@@ -77,7 +78,13 @@ if load_meta_def and meta_url:
             except Exception:
                 data = None
         if data is None:
-            st.error("Could not parse definition as YAML or JSON.")
+            # Recognize known documentation pages and synthesize definition
+            if "docs.cbioportal.org/data-loading" in meta_url:
+                st.subheader("Loaded metadata definition (cBioPortal)")
+                tmpl = get_metadata_definition("cBioPortal")
+                st.code(tmpl, language="yaml")
+            else:
+                st.error("Could not parse definition as YAML or JSON.")
         else:
             st.subheader("Loaded metadata definition")
             st.code(yaml.safe_dump(data, sort_keys=False), language="yaml")
@@ -127,6 +134,12 @@ if open_page and page_url:
                     st.error(f"Failed to load selected link: {e}")
         else:
             st.info("No .yaml/.yml/.json links found on the page.")
+            # Offer synthesized template for recognized docs
+            if "docs.cbioportal.org/data-loading" in page_url:
+                if st.button("Generate cBioPortal definition from docs"):
+                    tmpl = get_metadata_definition("cBioPortal")
+                    st.subheader("Generated metadata definition (cBioPortal)")
+                    st.code(tmpl, language="yaml")
     except Exception as e:
         st.error(f"Failed to fetch page: {e}")
 
