@@ -165,7 +165,7 @@ if df is not None:
         try:
             js = _build_json(df, table_name, source_str)
             st.subheader("Metadata definition (JSON)")
-            st.code(js, language="json")
+            st.json(json.loads(js))
         except Exception as e:
             st.error(f"YAML generation failed: {e}")
 
