@@ -32,7 +32,7 @@ with col1:
     st.markdown("""
     <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; border-left: 4px solid #28a745;">
         <h4 style="color: #28a745; margin: 0;">📋 Comprehensive Standards</h4>
-        <p style="margin: 0.5rem 0 0 0; color: #6c757d;">Biolink, BioPAX, GO, OMOP, SO, EFO integration</p>
+        <p style="margin: 0.5rem 0 0 0; color: #6c757d;">Biolink, BioPAX, GO, OMOP, SO, EFO, OBI, CDISC, NCIT integration</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -40,7 +40,7 @@ with col2:
     st.markdown("""
     <div style="background: #f8f9fa; padding: 1.5rem; border-radius: 8px; border-left: 4px solid #007bff;">
         <h4 style="color: #007bff; margin: 0;">🔗 Rich Relationships</h4>
-        <p style="margin: 0.5rem 0 0 0; color: #6c757d;">150+ genomic, clinical & functional relationships</p>
+        <p style="margin: 0.5rem 0 0 0; color: #6c757d;">200+ genomic, clinical & trial relationships</p>
     </div>
     """, unsafe_allow_html=True)
 
@@ -618,6 +618,48 @@ def _suggest_relations(cats: Set[str]) -> List[RelationDef]:
         rels.append(RelationDef("Measurement", "quantifies_expression", "Gene"))
         rels.append(RelationDef("Gene", "expression_measured_by", "Measurement"))
     
+    # Clinical trial relationships (OBI/CDISC/NCIT)
+    if has("subject", "investigation"):
+        rels.append(RelationDef("Subject", "participates_in", "Investigation"))
+        rels.append(RelationDef("Investigation", "enrolls", "Subject"))
+    if has("subject", "adverse_event"):
+        rels.append(RelationDef("Subject", "experiences", "AdverseEvent"))
+        rels.append(RelationDef("AdverseEvent", "affects", "Subject"))
+    if has("subject", "demographics"):
+        rels.append(RelationDef("Subject", "has_demographics", "Demographics"))
+        rels.append(RelationDef("Demographics", "describes", "Subject"))
+    if has("subject", "laboratory"):
+        rels.append(RelationDef("Subject", "has_lab_result", "Laboratory"))
+        rels.append(RelationDef("Laboratory", "measured_for", "Subject"))
+    if has("investigation", "protocol"):
+        rels.append(RelationDef("Investigation", "follows", "Protocol"))
+        rels.append(RelationDef("Protocol", "defines", "Investigation"))
+    if has("protocol", "endpoint"):
+        rels.append(RelationDef("Protocol", "specifies", "Endpoint"))
+        rels.append(RelationDef("Endpoint", "defined_in", "Protocol"))
+    if has("investigation", "study_design"):
+        rels.append(RelationDef("Investigation", "uses", "StudyDesign"))
+        rels.append(RelationDef("StudyDesign", "applied_to", "Investigation"))
+    if has("subject", "therapy"):
+        rels.append(RelationDef("Subject", "receives", "Therapy"))
+        rels.append(RelationDef("Therapy", "administered_to", "Subject"))
+    if has("therapy", "biomarker"):
+        rels.append(RelationDef("Therapy", "targets", "Biomarker"))
+        rels.append(RelationDef("Biomarker", "targeted_by", "Therapy"))
+    if has("biomarker", "laboratory"):
+        rels.append(RelationDef("Biomarker", "measured_by", "Laboratory"))
+        rels.append(RelationDef("Laboratory", "measures", "Biomarker"))
+    if has("device", "therapy"):
+        rels.append(RelationDef("Device", "delivers", "Therapy"))
+        rels.append(RelationDef("Therapy", "delivered_by", "Device"))
+    if has("adverse_event", "therapy"):
+        rels.append(RelationDef("AdverseEvent", "related_to", "Therapy"))
+        rels.append(RelationDef("Therapy", "may_cause", "AdverseEvent"))
+    
+    # NCIT semantic relationships
+    if has("subject", "subject"):  # Handle patient/subject synonymy
+        rels.append(RelationDef("Subject", "same_as", "Subject"))  # Self-reference for semantic mapping
+    
     return rels
 
 def _discover_related_entities(entities: List[str]) -> Dict[str, List[str]]:
@@ -814,8 +856,8 @@ with tab1:
     with col1:
         entities_text = st.text_input(
             "**Core Entities for Your Data Model**",
-            placeholder="Gene, Protein, Disease, Drug, Variant, Pathway, Sample, Tissue, Phenotype, Observation, Assay",
-            help="Enter the main biological entities relevant to your pharmaceutical data. Supports Biolink, OMOP, GO, SO, and EFO standards."
+            placeholder="Gene, Protein, Disease, Drug, Subject, Investigation, Therapy, Biomarker, AdverseEvent, Demographics",
+            help="Enter the main biological and clinical entities relevant to your pharmaceutical data. Supports Biolink, OMOP, GO, SO, EFO, OBI, CDISC, and NCIT standards."
         )
     
     with col2:
@@ -823,10 +865,13 @@ with tab1:
         # Organize entities by category
         st.markdown("**🧬 Genomics:** Gene, Protein, Variant, Transcript")
         st.markdown("**🏥 Clinical:** Disease, Phenotype, Condition, Observation")
-        st.markdown("**💊 Therapeutics:** Drug, Pathway, MolecularFunction")
-        st.markdown("**🔬 Experimental:** Sample, Assay, ExperimentalFactor")
-        st.markdown("**📊 Clinical Data:** Measurement, Procedure, Visit, Cohort")
+        st.markdown("**💊 Therapeutics:** Drug, Pathway, MolecularFunction, Therapy, Biomarker")
+        st.markdown("**🔬 Experimental:** Sample, Assay, ExperimentalFactor, Investigation")
+        st.markdown("**📊 Clinical Data:** Measurement, Procedure, Visit, Cohort, Laboratory")
         st.markdown("**🧩 Functional:** BiologicalProcess, CellularComponent")
+        st.markdown("**👥 Clinical Trials:** Subject, Protocol, StudyDesign, Endpoint, AdverseEvent")
+        st.markdown("**🏥 CDISC SDTM:** Demographics, VitalSigns, ConcomitantMedication, ECG")
+        st.markdown("**🔬 NCIT:** Device, Therapy, Biomarker")
 
     # Entity preview with professional styling
     if entities_text:
@@ -872,10 +917,10 @@ with tab1:
                     
                     st.markdown("</div>", unsafe_allow_html=True)
 
-entered: List[str] = [e for e in [s.strip() for s in entities_text.split(",")] if e] if entities_text else []
-cats: List[str] = [_canon(e) for e in entered]
+    entered: List[str] = [e for e in [s.strip() for s in entities_text.split(",")] if e] if entities_text else []
+    cats: List[str] = [_canon(e) for e in entered]
 
-if entered:
+    if entered:
         st.markdown("---")
         st.markdown("#### 🔍 Step 2: Intelligent Entity Discovery")
         st.markdown("**Leverage APIs and knowledge graphs** to discover related entities and expand your data model scope.")
