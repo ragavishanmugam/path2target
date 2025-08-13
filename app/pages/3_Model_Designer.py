@@ -13,6 +13,7 @@ from path2target.model import (
 )
 from path2target.ols import search_ontology_terms
 from path2target.apis import EnsemblAPI, UniProtAPI, ReactomeAPI, safe_api_call
+from path2target.llm_reasoning import get_llm_reasoner, ModelAnalysis
 
 st.set_page_config(page_title="Data Model Designer", page_icon="🏗️", layout="wide")
 
@@ -754,6 +755,11 @@ with tab2:
     if "generated_model_yaml" in st.session_state:
         st.session_state.model_yaml = st.session_state.generated_model_yaml
         del st.session_state.generated_model_yaml
+    
+    # Check if we have a refined model from LLM
+    if "refined_model_yaml" in st.session_state:
+        st.session_state.model_yaml = st.session_state.refined_model_yaml
+        del st.session_state.refined_model_yaml
 
     col1, col2 = st.columns([3, 1])
     
@@ -775,10 +781,65 @@ with tab2:
         if st.button("📊 Generate Summary", use_container_width=True):
             st.session_state.show_summary = True
         
+        # LLM Analysis Button
+        if st.button("🧠 LLM Analysis", type="secondary", use_container_width=True, 
+                    help="Use AI to analyze and suggest improvements to your model"):
+            with st.spinner("🤖 AI is analyzing your model..."):
+                try:
+                    llm_reasoner = get_llm_reasoner()
+                    if llm_reasoner.is_available():
+                        # Get current entities from the model
+                        current_entities = []
+                        try:
+                            model = IntermediateModel.from_yaml(st.session_state.model_yaml)
+                            current_entities = list(model.classes.keys())
+                        except:
+                            current_entities = []
+                        
+                        # Perform LLM analysis
+                        analysis = llm_reasoner.analyze_model(
+                            st.session_state.model_yaml,
+                            current_entities,
+                            "pharmaceutical and clinical research"
+                        )
+                        st.session_state.llm_analysis = analysis
+                        st.success(f"✅ **AI Analysis Complete** (Confidence: {analysis.confidence_score:.1%})")
+                    else:
+                        st.warning("🤖 **LLM Analysis Unavailable**\\n\\nTo enable AI-powered analysis, set one of these environment variables:\\n- `OPENAI_API_KEY` for OpenAI GPT-4\\n- `ANTHROPIC_API_KEY` for Claude\\n\\nFalling back to rule-based analysis...")
+                        llm_reasoner = get_llm_reasoner()
+                        analysis = llm_reasoner.analyze_model(st.session_state.model_yaml, [], "pharmaceutical research")
+                        st.session_state.llm_analysis = analysis
+                        st.info("📋 **Rule-based Analysis Complete**")
+                except Exception as e:
+                    st.error(f"❌ **Analysis Failed:** {str(e)}")
+        
+        # LLM Refinement Button
+        if st.button("✨ AI Refinement", type="secondary", use_container_width=True,
+                    help="Let AI enhance and refine your model based on analysis"):
+            if "llm_analysis" in st.session_state:
+                with st.spinner("🔧 AI is refining your model..."):
+                    try:
+                        llm_reasoner = get_llm_reasoner()
+                        refined_yaml = llm_reasoner.refine_yaml_model(
+                            st.session_state.model_yaml,
+                            st.session_state.llm_analysis
+                        )
+                        if refined_yaml and refined_yaml != st.session_state.model_yaml:
+                            st.session_state.refined_model_yaml = refined_yaml
+                            st.success("✅ **Model Enhanced by AI!** Check the analysis results below.")
+                            st.rerun()
+                        else:
+                            st.info("ℹ️ No significant improvements suggested by AI.")
+                    except Exception as e:
+                        st.error(f"❌ **Refinement Failed:** {str(e)}")
+            else:
+                st.warning("⚠️ Run **LLM Analysis** first to enable AI refinement.")
+        
         if st.button("⬇️ Download YAML", use_container_width=True):
+            yaml_to_download = st.session_state.get("refined_model_yaml", st.session_state.model_yaml)
             st.download_button(
                 label="Download Model",
-                data=st.session_state.model_yaml,
+                data=yaml_to_download,
                 file_name="biomedical_data_model.yaml",
                 mime="text/yaml"
             )
@@ -820,6 +881,78 @@ with tab2:
                                          "Domain-specific attribute" if p.datatype != "string" else "Standard attribute"
                         })
                     st.table(props_data)
+    
+    # LLM Analysis Results Display
+    if "llm_analysis" in st.session_state:
+        st.markdown("---")
+        st.markdown("### 🤖 AI Analysis Results")
+        
+        analysis = st.session_state.llm_analysis
+        
+        # Analysis overview
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Confidence Score", f"{analysis.confidence_score:.1%}")
+        with col2:
+            st.metric("Suggestions", len(analysis.suggestions))
+        with col3:
+            st.metric("Missing Entities", len(analysis.missing_entities))
+        
+        # Detailed analysis in tabs
+        analysis_tab1, analysis_tab2, analysis_tab3, analysis_tab4 = st.tabs([
+            "💡 Suggestions", "🧬 Missing Entities", "🔗 Relationships", "📚 Ontologies"
+        ])
+        
+        with analysis_tab1:
+            st.markdown("#### 💡 AI Recommendations")
+            if analysis.suggestions:
+                for i, suggestion in enumerate(analysis.suggestions, 1):
+                    st.markdown(f"**{i}.** {suggestion}")
+            else:
+                st.info("No specific suggestions provided.")
+            
+            if analysis.reasoning:
+                st.markdown("#### 🧠 AI Reasoning")
+                st.markdown(f"*{analysis.reasoning}*")
+        
+        with analysis_tab2:
+            st.markdown("#### 🧬 Recommended Additional Entities")
+            if analysis.missing_entities:
+                for entity in analysis.missing_entities:
+                    st.markdown(f"• **{entity}**")
+            else:
+                st.info("No additional entities recommended.")
+            
+            # Property enhancements
+            if analysis.property_enhancements:
+                st.markdown("#### ⚙️ Property Enhancements")
+                for entity, properties in analysis.property_enhancements.items():
+                    if properties:
+                        with st.expander(f"**{entity}** - {len(properties)} additional properties"):
+                            for prop in properties:
+                                st.markdown(f"• `{prop}`")
+        
+        with analysis_tab3:
+            st.markdown("#### 🔗 Recommended Relationships")
+            if analysis.missing_relationships:
+                for relationship in analysis.missing_relationships:
+                    st.markdown(f"• {relationship}")
+            else:
+                st.info("No additional relationships recommended.")
+        
+        with analysis_tab4:
+            st.markdown("#### 📚 Ontology Recommendations")
+            if analysis.ontology_recommendations:
+                for onto_rec in analysis.ontology_recommendations:
+                    st.markdown(f"• {onto_rec}")
+            else:
+                st.info("No specific ontology recommendations.")
+        
+        # Clear analysis button
+        if st.button("🗑️ Clear Analysis", type="secondary"):
+            if "llm_analysis" in st.session_state:
+                del st.session_state.llm_analysis
+            st.rerun()
 
 with tab1:
     st.markdown("### 🎯 Intelligent Model Generation")
@@ -917,10 +1050,10 @@ with tab1:
                     
                     st.markdown("</div>", unsafe_allow_html=True)
 
-    entered: List[str] = [e for e in [s.strip() for s in entities_text.split(",")] if e] if entities_text else []
-    cats: List[str] = [_canon(e) for e in entered]
+entered: List[str] = [e for e in [s.strip() for s in entities_text.split(",")] if e] if entities_text else []
+cats: List[str] = [_canon(e) for e in entered]
 
-    if entered:
+if entered:
         st.markdown("---")
         st.markdown("#### 🔍 Step 2: Intelligent Entity Discovery")
         st.markdown("**Leverage APIs and knowledge graphs** to discover related entities and expand your data model scope.")
@@ -999,18 +1132,18 @@ with tab1:
             col1, col2 = st.columns([2, 1])
             
             with col1:
-                # Recommend ontologies (union of defaults for chosen entities)
-                recommended: Set[str] = set()
+    # Recommend ontologies (union of defaults for chosen entities)
+    recommended: Set[str] = set()
                 for c in final_cats:
-                    for o in DEFAULT_ONTS.get(c, []):
-                        recommended.add(o)
+        for o in DEFAULT_ONTS.get(c, []):
+            recommended.add(o)
                 
                 st.markdown("**🔬 Biomedical Ontology Standards**")
-                selected_onts = st.multiselect(
+    selected_onts = st.multiselect(
                     "Select ontologies for your data model",
-                    options=sorted(list(recommended)),
-                    default=sorted(list(recommended)),
-                    key="model_helper_onts",
+        options=sorted(list(recommended)),
+        default=sorted(list(recommended)),
+        key="model_helper_onts",
                     help="These ontologies will provide standardized identifiers and classifications for your entities."
                 )
                 
@@ -1018,22 +1151,22 @@ with tab1:
                 with st.expander("🔍 Advanced: Search Ontology Lookup Service (OLS)", expanded=False):
                     st.markdown("*Search for specific ontology terms to validate your entity choices:*")
                     q = st.text_input("Search terms", value=(entered[0] if entered else ""), key="ols_q")
-                    if q:
-                        try:
-                            hits = search_ontology_terms(q, size=10)
-                            if hits:
-                                st.table([
-                                    {
+        if q:
+            try:
+                hits = search_ontology_terms(q, size=10)
+                if hits:
+                    st.table([
+                        {
                                         "Label": h.get("label"),
                                         "Ontology": h.get("ontology_name"),
                                         "IRI": h.get("iri"),
-                                    }
-                                    for h in hits
-                                ])
-                            else:
+                        }
+                        for h in hits
+                    ])
+                else:
                                 st.info("No OLS results found.")
-                        except Exception as e:
-                            st.warning(f"OLS search failed: {e}")
+            except Exception as e:
+                st.warning(f"OLS search failed: {e}")
 
             with col2:
                 st.markdown("**📊 Model Summary**")
@@ -1048,36 +1181,112 @@ with tab1:
                 st.metric("Ontologies", len(selected_onts))
                 
                 # Generate button with professional styling
-                if st.button("🎯 Generate Data Model", key="generate_model", type="primary", use_container_width=True):
-                    with st.spinner("🔧 Generating comprehensive data model..."):
-                        model = IntermediateModel()
-                        # Use final entities (including discovered ones)
-                        working_entities = final_entities
-                        working_cats = final_cats
+                generate_col1, generate_col2 = st.columns([2, 1])
+                
+                with generate_col1:
+                    if st.button("🎯 Generate Data Model", key="generate_model", type="primary", use_container_width=True):
+                        st.session_state.generate_with_llm = False
+                        st.session_state.trigger_generation = True
+                
+                with generate_col2:
+                    if st.button("🤖 AI-Enhanced Generation", key="generate_model_llm", type="secondary", use_container_width=True):
+                        st.session_state.generate_with_llm = True
+                        st.session_state.trigger_generation = True
+                
+                # Handle model generation
+                if st.session_state.get("trigger_generation", False):
+                    del st.session_state.trigger_generation
+                    
+                    use_llm = st.session_state.get("generate_with_llm", False)
+                    if use_llm and "generate_with_llm" in st.session_state:
+                        del st.session_state.generate_with_llm
                         
-                        # Add classes with properties
-                        for ent, cat in zip(working_entities, working_cats):
-                            class_name = ent.strip().title().replace(" ", "")
-                            props = _props_for(cat)
-                            # Create richer description based on entity type
-                            if cat in BIOLINK_BIOPAX_PROPS:
-                                description = f"Biolink/BioPAX-compliant {cat} entity representing {ent} with domain-specific properties."
-                            else:
-                                description = f"Auto-generated class for {ent}"
-                            model.classes[class_name] = EntityClass(name=class_name, description=description, properties=props)
-                        
-                        # Add relations based on categories present
-                        for r in _suggest_relations(set(working_cats)):
-                            # Map relation subject/object to entered class names if present; else keep canonical
-                            subj = next((e.strip().title().replace(" ", "") for e, c in zip(working_entities, working_cats) if c.lower() == r.subject.lower()), r.subject)
-                            obj = next((e.strip().title().replace(" ", "") for e, c in zip(working_entities, working_cats) if c.lower() == r.object.lower()), r.object)
-                            model.relations.append(RelationDef(subj, r.predicate, obj))
-                        
-                        # Ontologies
-                        model.ontologies = list(selected_onts)
+                        with st.spinner("🤖 AI is generating an enhanced data model..."):
+                            # First generate base model
+                            model = IntermediateModel()
+                            working_entities = final_entities
+                            working_cats = final_cats
+                            
+                            # Add classes with properties
+                            for ent, cat in zip(working_entities, working_cats):
+                                class_name = ent.strip().title().replace(" ", "")
+                                props = _props_for(cat)
+                                if cat in BIOLINK_BIOPAX_PROPS:
+                                    description = f"Biolink/BioPAX-compliant {cat} entity representing {ent} with domain-specific properties."
+                                else:
+                                    description = f"Auto-generated class for {ent}"
+                                model.classes[class_name] = EntityClass(name=class_name, description=description, properties=props)
+                            
+                            # Add relations
+                            for r in _suggest_relations(set(working_cats)):
+                                subj = next((e.strip().title().replace(" ", "") for e, c in zip(working_entities, working_cats) if c.lower() == r.subject.lower()), r.subject)
+                                obj = next((e.strip().title().replace(" ", "") for e, c in zip(working_entities, working_cats) if c.lower() == r.object.lower()), r.object)
+                                model.relations.append(RelationDef(subj, r.predicate, obj))
+                            
+                            model.ontologies = list(selected_onts)
+                            base_yaml = model.to_yaml()
+                            
+                            # Now use LLM to enhance it
+                            try:
+                                llm_reasoner = get_llm_reasoner()
+                                if llm_reasoner.is_available():
+                                    # Analyze the base model
+                                    analysis = llm_reasoner.analyze_model(
+                                        base_yaml, 
+                                        working_entities, 
+                                        "pharmaceutical and clinical research with focus on: " + ", ".join(working_entities)
+                                    )
+                                    
+                                    # Refine the model
+                                    enhanced_yaml = llm_reasoner.refine_yaml_model(base_yaml, analysis)
+                                    
+                                    if enhanced_yaml and enhanced_yaml != base_yaml:
+                                        st.session_state.generated_model_yaml = enhanced_yaml
+                                        st.session_state.llm_analysis = analysis
+                                        st.success(f"✅ **AI-Enhanced Model Generated!** (Confidence: {analysis.confidence_score:.1%}) Switch to YAML Editor to review.")
+                                    else:
+                                        st.session_state.generated_model_yaml = base_yaml
+                                        st.info("🤖 AI analysis complete - base model was already optimal.")
+                                else:
+                                    st.session_state.generated_model_yaml = base_yaml
+                                    st.warning("🤖 LLM not available - generated standard model instead. Set OPENAI_API_KEY or ANTHROPIC_API_KEY for AI enhancement.")
+                            except Exception as e:
+                                st.session_state.generated_model_yaml = base_yaml
+                                st.error(f"❌ AI enhancement failed: {e}. Generated standard model instead.")
+                            
+                            st.session_state.model_obj = model
+                            st.rerun()
+                    
+                    else:
+                        with st.spinner("🔧 Generating comprehensive data model..."):
+                            model = IntermediateModel()
+                            # Use final entities (including discovered ones)
+                            working_entities = final_entities
+                            working_cats = final_cats
+                            
+                            # Add classes with properties
+                            for ent, cat in zip(working_entities, working_cats):
+                                class_name = ent.strip().title().replace(" ", "")
+                                props = _props_for(cat)
+                                # Create richer description based on entity type
+                                if cat in BIOLINK_BIOPAX_PROPS:
+                                    description = f"Biolink/BioPAX-compliant {cat} entity representing {ent} with domain-specific properties."
+                                else:
+                                    description = f"Auto-generated class for {ent}"
+                                model.classes[class_name] = EntityClass(name=class_name, description=description, properties=props)
+                            
+                            # Add relations based on categories present
+                            for r in _suggest_relations(set(working_cats)):
+                                # Map relation subject/object to entered class names if present; else keep canonical
+                                subj = next((e.strip().title().replace(" ", "") for e, c in zip(working_entities, working_cats) if c.lower() == r.subject.lower()), r.subject)
+                                obj = next((e.strip().title().replace(" ", "") for e, c in zip(working_entities, working_cats) if c.lower() == r.object.lower()), r.object)
+                                model.relations.append(RelationDef(subj, r.predicate, obj))
+                            
+                            # Ontologies
+                            model.ontologies = list(selected_onts)
 
-                        # Store the generated model and trigger rerun to update the text area
-                        st.session_state.generated_model_yaml = model.to_yaml()
-                        st.session_state.model_obj = model
-                        st.success("✅ **Data model generated successfully!** Switch to the YAML Editor tab to review and validate.")
-                        st.rerun()
+                            # Store the generated model and trigger rerun to update the text area
+                            st.session_state.generated_model_yaml = model.to_yaml()
+                            st.session_state.model_obj = model
+                            st.success("✅ **Data model generated successfully!** Switch to the YAML Editor tab to review and validate.")
+                            st.rerun()
