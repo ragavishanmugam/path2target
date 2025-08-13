@@ -1132,18 +1132,18 @@ if entered:
             col1, col2 = st.columns([2, 1])
             
             with col1:
-    # Recommend ontologies (union of defaults for chosen entities)
-    recommended: Set[str] = set()
+                # Recommend ontologies (union of defaults for chosen entities)
+                recommended: Set[str] = set()
                 for c in final_cats:
-        for o in DEFAULT_ONTS.get(c, []):
-            recommended.add(o)
+                    for o in DEFAULT_ONTS.get(c, []):
+                        recommended.add(o)
                 
                 st.markdown("**🔬 Biomedical Ontology Standards**")
-    selected_onts = st.multiselect(
+                selected_onts = st.multiselect(
                     "Select ontologies for your data model",
-        options=sorted(list(recommended)),
-        default=sorted(list(recommended)),
-        key="model_helper_onts",
+                    options=sorted(list(recommended)),
+                    default=sorted(list(recommended)),
+                    key="model_helper_onts",
                     help="These ontologies will provide standardized identifiers and classifications for your entities."
                 )
                 
