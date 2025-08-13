@@ -76,3 +76,4 @@ def default_biolink_skeleton() -> IntermediateModel:
     return model
 
 
+

@@ -40,3 +40,4 @@ def infer_schema(df: pd.DataFrame, sample_rows: int = 50) -> Dict[str, Any]:
     return summary
 
 
+

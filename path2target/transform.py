@@ -47,3 +47,4 @@ def run_transformations(config: Path, outdir: Path) -> Dict[str, Any]:
     return {"num_triples": len(g), "num_rows": len(rows)}
 
 
+

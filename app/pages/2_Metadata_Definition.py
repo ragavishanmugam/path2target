@@ -26,6 +26,12 @@ table_name: str = "table"
 source_str = "user_upload"
 excel_state_key = "metadata_def_excel"
 
+# --- API definition (OpenAPI/GraphQL) inputs ---
+st.divider()
+st.caption("Alternatively, analyze an API definition")
+api_url = st.text_input("API URL (OpenAPI JSON/YAML or GraphQL endpoint)")
+load_api = st.button("Load API")
+
 def _simple_dtype(series: pd.Series) -> str:
     dt = str(series.dtype)
     if dt.startswith("int"):
@@ -190,6 +196,125 @@ if load:
             st.info("Upload a file or paste a URL, then click Load.")
     except Exception as e:
         st.error(f"Load failed: {e}")
+
+# -------------------- API handling --------------------
+def _is_openapi(doc: Any) -> bool:
+    return isinstance(doc, dict) and ("openapi" in doc or "swagger" in doc) and "info" in doc
+
+
+def _type_from_schema(s: Dict[str, Any]) -> str:
+    if not isinstance(s, dict):
+        return str(s)
+    if "$ref" in s:
+        return s["$ref"].split("/")[-1]
+    t = s.get("type")
+    if t == "array":
+        return f"array[{_type_from_schema(s.get('items', {}))}]"
+    if t:
+        return str(t)
+    if "oneOf" in s:
+        return "oneOf(" + ",".join(_type_from_schema(x) for x in s["oneOf"]) + ")"
+    if "allOf" in s:
+        return "allOf(" + ",".join(_type_from_schema(x) for x in s["allOf"]) + ")"
+    return "object"
+
+
+def _summarize_openapi(doc: Dict[str, Any]) -> Dict[str, Any]:
+    rows: List[Dict[str, Any]] = []
+    entities: List[Dict[str, Any]] = []
+    schemas = ((doc.get("components") or {}).get("schemas") or {})
+    for name, sch in schemas.items():
+        props = (sch.get("properties") or {}) if isinstance(sch, dict) else {}
+        required_fields = set(sch.get("required") or []) if isinstance(sch, dict) else set()
+        ent_props: List[Dict[str, Any]] = []
+        for fname, fsch in props.items():
+            ftype = _type_from_schema(fsch)
+            desc = (fsch or {}).get("description", "") if isinstance(fsch, dict) else ""
+            rows.append({
+                "entity": name,
+                "field": fname,
+                "type": ftype,
+                "required": fname in required_fields,
+                "description": desc,
+            })
+            ent_props.append({"name": fname, "type": ftype, "required": fname in required_fields, "description": desc})
+        entities.append({"name": name, "properties": ent_props})
+    model = {"source": api_url, "type": "openapi", "entities": entities}
+    return {"rows": rows, "model": model}
+
+
+INTROSPECTION_QUERY = {
+    "query": """
+    query IntrospectionQuery { __schema { types { name kind description fields { name description type { kind name ofType { kind name ofType { kind name } } } } } } }
+    """
+}
+
+
+def _type_to_str(t: Dict[str, Any]) -> str:
+    # Recursively flatten GraphQL type
+    if t is None:
+        return ""
+    kind = t.get("kind")
+    name = t.get("name")
+    ofType = t.get("ofType")
+    if kind == "NON_NULL":
+        return _type_to_str(ofType) + "!"
+    if kind == "LIST":
+        return "[" + _type_to_str(ofType) + "]"
+    return name or kind or ""
+
+
+def _summarize_graphql(url: str) -> Dict[str, Any]:
+    r = requests.post(url, json=INTROSPECTION_QUERY, timeout=30)
+    r.raise_for_status()
+    data = r.json()
+    schema = ((data or {}).get("data") or {}).get("__schema") or {}
+    types = schema.get("types") or []
+    rows: List[Dict[str, Any]] = []
+    entities: List[Dict[str, Any]] = []
+    for t in types:
+        name = t.get("name")
+        if not name or name.startswith("__"):
+            continue
+        kind = t.get("kind")
+        if kind not in {"OBJECT", "INPUT_OBJECT"}:
+            continue
+        fields = t.get("fields") or []
+        ent_props: List[Dict[str, Any]] = []
+        for f in fields:
+            fname = f.get("name")
+            fdesc = f.get("description") or ""
+            ftype = _type_to_str(((f or {}).get("type") or {}))
+            rows.append({"entity": name, "field": fname, "type": ftype, "required": "!" in ftype, "description": fdesc})
+            ent_props.append({"name": fname, "type": ftype, "required": "!" in ftype, "description": fdesc})
+        entities.append({"name": name, "properties": ent_props})
+    model = {"source": url, "type": "graphql", "entities": entities}
+    return {"rows": rows, "model": model}
+
+
+if load_api and api_url:
+    try:
+        resp = requests.get(api_url, timeout=30)
+        doc = None
+        try:
+            doc = yaml.safe_load(resp.text)
+        except Exception:
+            doc = None
+        if _is_openapi(doc):
+            res = _summarize_openapi(doc)
+            st.subheader("API model (OpenAPI) — entities")
+            st.dataframe(pd.DataFrame(res["rows"]))
+            st.subheader("Generated data model (JSON)")
+            st.json(res["model"])
+        else:
+            # try GraphQL introspection
+            res = _summarize_graphql(api_url)
+            st.subheader("API model (GraphQL) — entities")
+            st.dataframe(pd.DataFrame(res["rows"]))
+            st.subheader("Generated data model (JSON)")
+            st.json(res["model"])
+    except Exception as e:
+        st.error(f"API load failed: {e}")
 
 # Excel multi-sheet handling
 if excel_state_key in st.session_state:
